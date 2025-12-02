@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Walk-Up Music Control</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    button { margin: 0.5rem 0.25rem; padding: 0.5rem 1rem; }
+    #status { white-space: pre-line; margin-top: 1rem; font-weight: bold; }
+    input[type="text"] { width: 3rem; }
+    select { width: 100%; }
+    #voiceSelect { width: 100%; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Walk-Up Music Control</h1>
+
+  <!-- Assignments Table -->
+  <table>
+    <tr>
+      <th>Player</th><th>#</th><th>Song</th>
+    </tr>
+    {% for player in roster %}
+    <tr>
+      <td>{{ player }}</td>
+      <td>
+        <input id="num-{{player}}" type="text"
+               value="{{ assignments[player].batting_number }}" placeholder="—">
+      </td>
+      <td>
+        <select id="song-{{player}}">
+          <option value="">—</option>
+          {% for s in songs %}
+            <option value="{{s}}"
+              {% if s==assignments[player].song %}selected{% endif %}>
+              {{s}}
+            </option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <!-- Save / Reload -->
+  <div>
+    <button onclick="save()">💾 Save Assignments</button>
+    <button onclick="reloadRoster()">🔄 Reload Roster</button>
+  </div>
+  <hr/>
+
+  <!-- Voice Selection -->
+  <label for="voiceSelect"><strong>Voice:</strong></label>
+  <select id="voiceSelect"></select>
+
+  <!-- Controls -->
+  <div>
+    <button onclick="announceAndNext()">▶️ Next Batter</button>
+    <button onclick="stop()">⏹️ Stop</button>
+  </div>
+
+  <!-- Status Display -->
+  <div id="status"></div>
+
+  <script>
+    // Populate voice dropdown
+    const voiceSelect = document.getElementById("voiceSelect");
+    function populateVoices() {
+      const voices = speechSynthesis.getVoices();
+      voiceSelect.innerHTML = voices
+        .map(v => `<option value="${v.name}" ${v.default ? 'selected' : ''}>
+                     ${v.name} (${v.lang})
+                   </option>`)
+        .join("");
+    }
+    speechSynthesis.onvoiceschanged = populateVoices;
+    populateVoices();
+
+    // Save assignments to server
+    async function save() {
+      const payload = { assignments: {} };
+      {% for player in roster %}
+      payload.assignments["{{player}}"] = {
+        batting_number: document.getElementById("num-{{player}}").value,
+        song:           document.getElementById("song-{{player}}").value
+      };
+      {% endfor %}
+      await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      alert("Assignments saved!");
+    }
+
+    async function reloadRoster() {
+      await fetch("/api/reload", { method: "POST" });
+      window.location.reload();
+    }
+
+    // Fetch lineup state from server
+    async function getLineup() {
+      const res = await fetch("/api/lineup");
+      return await res.json();
+    }
+
+    // Announce then play next
+    async function announceAndNext() {
+      const data = await getLineup();
+      if (!data.lineup?.length) return;
+
+      // Next batter index
+      const idx = data.current_index % data.lineup.length;
+      const name = data.lineup[idx].name;
+
+      if ("speechSynthesis" in window) {
+        const utter = new SpeechSynthesisUtterance(`Now up ${name}`);
+        const voices = speechSynthesis.getVoices();
+        utter.voice = voices.find(v => v.name === voiceSelect.value)
+                      || voices[0];
+        utter.rate  = 0.75;  // slower
+        utter.pitch = 0.6;   // deeper
+        utter.volume = 1;
+        utter.onend = () => doNext();
+        speechSynthesis.speak(utter);
+      } else {
+        doNext();
+      }
+    }
+
+    // Trigger next batter playback
+    async function doNext() {
+      await fetch("/api/next", { method: "POST" });
+      updateStatus();
+    }
+
+    // Stop playback
+    async function stop() {
+      await fetch("/api/stop", { method: "POST" });
+      updateStatus();
+    }
+
+    // Update Now / On Deck / In The Hole
+    async function updateStatus() {
+      const j = await getLineup();
+      const out = document.getElementById("status");
+      if (!j.lineup?.length) {
+        out.innerText = "No valid lineup";
+        return;
+      }
+      let ci = j.current_index - 1;
+      if (ci < 0) ci = j.lineup.length - 1;
+      const curr   = j.lineup[ci];
+      const next   = j.lineup[(ci + 1) % j.lineup.length].name;
+      const next2  = j.lineup[(ci + 2) % j.lineup.length].name;
+      out.innerText = 
+        `Now: ${curr.name} (#${curr.number})\n` +
+        `On Deck: ${next}\n` +
+        `In The Hole: ${next2}`;
+    }
+
+    // Poll status
+    setInterval(updateStatus, 2000);
+    updateStatus();
+  </script>
+</body>
+</html>
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Walk-Up Music Control</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    button { margin: 0.5rem 0.25rem; padding: 0.5rem 1rem; }
+    #status { white-space: pre-line; margin-top: 1rem; font-weight: bold; }
+    input[type="text"] { width: 3rem; }
+    select { width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>Walk-Up Music Control</h1>
+
+  <table>
+    <tr>
+      <th>Player</th><th>#</th><th>Song</th>
+    </tr>
+    {% for player in roster %}
+    <tr>
+      <td>{{ player }}</td>
+      <td><input id="num-{{player}}" type="text" value="{{assignments[player].batting_number}}" placeholder="—"></td>
+      <td>
+        <select id="song-{{player}}">
+          <option value="">—</option>
+          {% for s in songs %}
+            <option value="{{s}}" {% if s==assignments[player].song %}selected{% endif %}>{{s}}</option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div>
+    <button onclick="save()">💾 Save Assignments</button>
+    <button onclick="reloadRoster()">🔄 Reload Roster</button>
+  </div>
+  <hr/>
+  <div>
+    <button onclick="announceAndNext()">▶️ Next Batter</button>
+    <button onclick="stop()">⏹️ Stop</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    // Save assignments back to server
+    async function save() {
+      const payload = { assignments:{} };
+      {% for player in roster %}
+      payload.assignments["{{player}}"] = {
+        batting_number: document.getElementById("num-{{player}}").value,
+        song: document.getElementById("song-{{player}}").value
+      };
+      {% endfor %}
+      await fetch("/api/save", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+      alert("Assignments saved!");
+    }
+
+    async function reloadRoster(){
+      await fetch("/api/reload",{method:"POST"});
+      window.location.reload();
+    }
+
+    // Fetch current lineup state
+    async function getLineup(){
+      const res = await fetch("/api/lineup");
+      return await res.json();
+    }
+
+    // Speak then trigger next
+    async function announceAndNext(){
+      const data = await getLineup();
+      if(!data.lineup || !data.lineup.length) return;
+
+      // The next batter is at index current_index
+      const idx = data.current_index % data.lineup.length;
+      const name = data.lineup[idx].name;
+
+      // Use Web Speech API if available
+      if(window.speechSynthesis){
+        const utter = new SpeechSynthesisUtterance(`Now up ${name}`);
+        utter.onend = () => {
+          doNext();
+        };
+        speechSynthesis.speak(utter);
+      } else {
+        // fallback: just go
+        doNext();
+      }
+    }
+
+    // Actually call your API to play next track
+    async function doNext(){
+      await fetch("/api/next", { method:"POST" });
+      updateStatus();
+    }
+
+    async function stop(){
+      await fetch("/api/stop",{ method:"POST" });
+      updateStatus();
+    }
+
+    // Update the Now / on deck / in the hole display
+    async function updateStatus(){
+      const j = await (await fetch("/api/lineup")).json();
+      const out = document.getElementById("status");
+      if(!j.lineup || !j.lineup.length){
+        out.innerText = "No valid lineup";
+        return;
+      }
+      // last-played = current_index -1
+      let ci = j.current_index -1;
+      if(ci < 0) ci = j.lineup.length-1;
+      const curr = j.lineup[ci];
+      const next = j.lineup[(ci+1)%j.lineup.length].name;
+      const next2 = j.lineup[(ci+2)%j.lineup.length].name;
+      out.innerText = 
+        `Now: ${curr.name} (#${curr.number})\n`+
+        `On Deck: ${next}\n`+
+        `In The Hole: ${next2}`;
+    }
+
+    // Poll every 2 seconds
+    setInterval(updateStatus,2000);
+    updateStatus();
+  </script>
+</body>
+</html>
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Walk-Up Music Control</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    button { margin-right: 0.5rem; padding: 0.5rem 1rem; }
+    #status { white-space: pre-line; margin-top: 1rem; font-weight: bold; }
+    input[type="text"] { width: 3rem; }
+    select { width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>Walk-Up Music Control</h1>
+
+  <table>
+    <tr>
+      <th>Player</th>
+      <th>#</th>
+      <th>Song</th>
+    </tr>
+    {% for player in roster %}
+    <tr>
+      <td>{{ player }}</td>
+      <td>
+        <input
+          type="text"
+          id="num-{{ player }}"
+          value="{{ assignments[player].batting_number }}"
+          placeholder="—"
+        />
+      </td>
+      <td>
+        <select id="song-{{ player }}">
+          <option value="">—</option>
+          {% for s in songs %}
+            <option value="{{ s }}" {% if s == assignments[player].song %}selected{% endif %}>
+              {{ s }}
+            </option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div>
+    <button onclick="save()">💾 Save Assignments</button>
+    <button onclick="reloadRoster()">🔄 Reload Roster</button>
+  </div>
+  <hr />
+  <div>
+    <button onclick="next()">▶️ Next Batter</button>
+    <button onclick="stop()">⏹️ Stop</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    async function save() {
+      const payload = { assignments: {} };
+      {% for player in roster %}
+      payload.assignments["{{ player }}"] = {
+        batting_number: document.getElementById("num-{{ player }}").value,
+        song: document.getElementById("song-{{ player }}").value
+      };
+      {% endfor %}
+      await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      alert("Assignments saved!");
+    }
+
+    async function reloadRoster() {
+      await fetch("/api/reload", { method: "POST" });
+      window.location.reload();
+    }
+
+    async function next() {
+      await fetch("/api/next", { method: "POST" });
+      updateStatus();
+    }
+
+    async function stop() {
+      await fetch("/api/stop", { method: "POST" });
+      updateStatus();
+    }
+
+    async function updateStatus() {
+      const res = await fetch("/api/lineup");
+      const j = await res.json();
+      if (!j.lineup || j.lineup.length === 0) {
+        document.getElementById("status").innerText = "No valid lineup";
+        return;
+      }
+      let ci = j.current_index - 1;
+      if (ci < 0) ci = j.lineup.length - 1;
+      const curr = j.lineup[ci];
+      const nextUp = j.lineup[(ci + 1) % j.lineup.length].name;
+      const next2 = j.lineup[(ci + 2) % j.lineup.length].name;
+      document.getElementById("status").innerText =
+        `Now: ${curr.name} (#${curr.number})\n` +
+        `On Deck: ${nextUp}\n` +
+        `In The Hole: ${next2}`;
+    }
+
+    // Refresh status every 2 seconds
+    setInterval(updateStatus, 2000);
+    updateStatus();
+  </script>
+</body>
+</html> --> -->

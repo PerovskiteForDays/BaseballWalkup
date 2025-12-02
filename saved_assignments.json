@@ -1,0 +1,30 @@
+{
+  "Isaac": {
+    "batting_number": "1",
+    "song": "What's Up Danger (with Black Caviar) – Blackway"
+  },
+  "Courtney": {
+    "batting_number": "2",
+    "song": "Party Rock Anthem – LMFAO"
+  },
+  "Alex": {
+    "batting_number": "3",
+    "song": "O.P.P – Naughty By Nature"
+  },
+  "JP": {
+    "batting_number": "4",
+    "song": "Sweet Caroline – Neil Diamond"
+  },
+  "Shoshi": {
+    "batting_number": "5",
+    "song": "Truth Hurts – Lizzo"
+  },
+  "Adam": {
+    "batting_number": "Not in lineup",
+    "song": "Radioactive – Imagine Dragons"
+  },
+  "Mike": {
+    "batting_number": "6",
+    "song": "Truth Hurts – Lizzo"
+  }
+}
